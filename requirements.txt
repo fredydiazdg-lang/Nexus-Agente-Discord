@@ -3,3 +3,4 @@ python-dotenv
 groq
 yt-dlp
 static-ffmpeg
+aiohttp
