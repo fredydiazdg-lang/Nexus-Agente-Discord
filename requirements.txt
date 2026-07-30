@@ -2,3 +2,4 @@ discord.py
 python-dotenv
 groq
 yt-dlp
+static-ffmpeg
