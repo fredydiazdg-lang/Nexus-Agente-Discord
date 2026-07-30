@@ -1,0 +1,83 @@
+[
+  {
+    "ticket": "ticket-0029",
+    "tema": "QUIERO COMPRAR PANEL",
+    "estado": "Resuelto",
+    "abierto": "30/07 12:27",
+    "resuelto": "30/07 12:28",
+    "autor": "maestroff_013_72467"
+  },
+  {
+    "ticket": "ticket-0028",
+    "tema": "QUIERO COMPRAR PANEL",
+    "estado": "Resuelto",
+    "abierto": "30 de julio de 2026 — 12:12",
+    "resuelto": "30 de julio de 2026 — 12:12",
+    "autor": "maestroff_013_72467",
+    "autor_id": "1404867103366058109"
+  },
+  {
+    "ticket": "ticket-0027",
+    "tema": "QUIERO COMPRAR PANEL",
+    "estado": "Resuelto",
+    "abierto": "30 de julio de 2026 — 12:06",
+    "resuelto": "30 de julio de 2026 — 12:07",
+    "autor": "maestroff_013_72467"
+  },
+  {
+    "ticket": "ticket-0026",
+    "tema": "QUIERO COMPRAR PANEL",
+    "estado": "🔴 Resuelto",
+    "abierto": "30/07 — 11:59",
+    "resuelto": "30/07 — 12:00",
+    "autor": "maestroff_013_72467"
+  },
+  {
+    "ticket": "ticket-0023",
+    "tema": "QUIERO COMPRAR PANEL",
+    "estado": "🔴 Resuelto",
+    "abierto": "30/07 — 11:51",
+    "resuelto": "30/07 — 11:51",
+    "autor": "maestroff_013_72467"
+  },
+  {
+    "ticket": "ticket-0022",
+    "tema": "QUIERO COMPRAR PANEL",
+    "estado": "🔴 Resuelto",
+    "abierto": "30/07 — 11:50",
+    "resuelto": "30/07 — 11:50",
+    "autor": "maestroff_013_72467"
+  },
+  {
+    "ticket": "ticket-0021",
+    "tema": "QUIERO COMPRAR PANEL",
+    "estado": "🔴 Resuelto",
+    "abierto": "30/07 — 11:42",
+    "resuelto": "30/07 — 11:42",
+    "autor": "maestroff_013_72467"
+  },
+  {
+    "ticket": "ticket-0020",
+    "tema": "QUIERO COMPRAR PANEL",
+    "estado": "🔴 Resuelto",
+    "abierto": "30/07 — 11:30",
+    "resuelto": "30/07 — 11:31",
+    "autor": "elmaestrotemu_27687"
+  },
+  {
+    "ticket": "ticket-0019",
+    "tema": "QUIERO COMPRAR PANEL",
+    "estado": "🔴 Resuelto",
+    "abierto": "30/07 — 11:30",
+    "resuelto": "30/07 — 11:31",
+    "autor": "maestroff_013_72467"
+  },
+  {
+    "ticket": "ticket-0018",
+    "tema": "SOPORTE",
+    "estado": "🔴 Resuelto",
+    "abierto": "29/07 — 23:38",
+    "resuelto": "29/07 — 23:40",
+    "autor": "maestroff_013_72467"
+  }
+]
