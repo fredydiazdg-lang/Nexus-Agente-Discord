@@ -3,6 +3,7 @@ import asyncio
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
+from aiohttp import web  # 👈 Servidor web para Render
 
 load_dotenv()
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
@@ -11,6 +12,20 @@ DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 intents = discord.Intents.all()
 
 bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
+
+# 🚀 Función para responder a Render y evitar el error de puerto
+async def handle(request):
+    return web.Response(text="Nexus Bot está activo 24/7!")
+
+async def start_web_server():
+    app = web.Application()
+    app.router.add_get("/", handle)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 10000))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    print(f"🌐 Servidor Web escuchando en el puerto {port} para Render.")
 
 @bot.event
 async def on_ready():
@@ -48,6 +63,7 @@ async def cargar_modulos():
 
 async def main():
     async with bot:
+        await start_web_server()  # 👈 Inicia el servidor web justo antes de encender el bot
         await cargar_modulos()
         await bot.start(DISCORD_TOKEN)
 
