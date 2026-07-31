@@ -17,15 +17,14 @@ YTDL_OPTIONS = {
     'quiet': True,
     'default_search': 'ytsearch',
     'source_address': '0.0.0.0',
-    'socket_timeout': 30,
-    'retries': 5,
-    'extract_flat': 'in_playlist',
+    'socket_timeout': 15,
+    'retries': 3,
     'ignoreerrors': True,
     'nocheckcertificate': True,
     'no_warnings': True,
     'extractor_args': {
         'youtube': {
-            'player_client': ['android', 'web']
+            'player_client': ['mweb', 'android', 'web']
         }
     }
 }
@@ -35,11 +34,12 @@ YTDL_SINGLE_OPTIONS = {
     'quiet': True,
     'default_search': 'ytsearch',
     'source_address': '0.0.0.0',
+    'socket_timeout': 15,
     'nocheckcertificate': True,
     'no_warnings': True,
     'extractor_args': {
         'youtube': {
-            'player_client': ['android', 'web']
+            'player_client': ['mweb', 'android', 'web']
         }
     }
 }
