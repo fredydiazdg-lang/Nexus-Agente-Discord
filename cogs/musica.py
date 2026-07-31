@@ -8,6 +8,14 @@ import static_ffmpeg
 import random
 
 static_ffmpeg.add_paths()
+if not discord.opus.is_loaded():
+    try:
+        discord.opus.load_opus('libopus.so.0')
+    except Exception:
+        try:
+            discord.opus.load_opus('libopus.so')
+        except Exception:
+            pass
 
 # Opciones optimizadas de yt-dlp para Render / servidores en la nube
 YTDL_OPTIONS = {
