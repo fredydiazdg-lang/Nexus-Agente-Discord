@@ -15,11 +15,16 @@ YTDL_OPTIONS = {
     'noplaylist': True,
     'quiet': True,
     'source_address': '0.0.0.0',
-    'socket_timeout': 10,
-    'retries': 2,
+    'socket_timeout': 15,
+    'retries': 3,
     'ignoreerrors': True,
     'nocheckcertificate': True,
-    'no_warnings': True
+    'no_warnings': True,
+    'extractor_args': {
+        'youtube': {
+            'player_client': ['android', 'ios']
+        }
+    }
 }
 
 if os.path.exists("cookies.txt"):
@@ -41,52 +46,31 @@ loop_single = {}     # Guild ID -> Bool (Repetir canción actual automáticament
 
 TEXTO_FOOTER = "🎧 ¡Pídele una canción al DJ Nexus usando /play"
 
-INSTANCIAS_INVIDIOUS = [
-    "https://vid.puffyan.us",
-    "https://invidious.nerdvpn.de",
-    "https://inv.us.projectsegfau.lt",
-    "https://invidious.epicsite.xyz"
-]
+async def resolver_busqueda_url(query):
+    """Si es un link lo usa directo; si es texto, busca la URL real en la API pública de Piped."""
+    if query.startswith("http://") or query.startswith("https://"):
+        return query
 
-async def obtener_stream_invidious(query):
-    """Busca en instancias públicas de Invidious para evitar totalmente el bloqueo anti-bot de Render."""
-    async with aiohttp.ClientSession() as session:
-        for instancia in INSTANCIAS_INVIDIOUS:
-            try:
-                url_busqueda = f"{instancia}/api/v1/search?q={query}&type=video"
-                async with session.get(url_busqueda, timeout=4) as resp:
-                    if resp.status == 200:
-                        resultados = await resp.json()
-                        if resultados and len(resultados) > 0:
-                            video_id = resultados[0].get('videoId')
-                            titulo = resultados[0].get('title', 'Música')
-                            thumbs = resultados[0].get('videoThumbnails', [])
-                            thumb_url = thumbs[0].get('url') if thumbs else ''
-                            
-                            # Obtener streaming directo
-                            url_info = f"{instancia}/api/v1/videos/{video_id}"
-                            async with session.get(url_info, timeout=4) as resp_info:
-                                if resp_info.status == 200:
-                                    info_video = await resp_info.json()
-                                    formatos = info_video.get('adaptiveFormats', [])
-                                    # Filtrar solo stream de audio
-                                    audio_formats = [f for f in formatos if 'audio' in f.get('type', '')]
-                                    if audio_formats:
-                                        # Tomar la mejor calidad de audio disponible
-                                        audio_stream_url = audio_formats[0].get('url')
-                                        return {
-                                            'url_or_search': f"https://www.youtube.com/watch?v={video_id}",
-                                            'url_stream': audio_stream_url,
-                                            'title': titulo,
-                                            'thumbnail': thumb_url
-                                        }
-            except Exception as e:
-                print(f"Instancia {instancia} falló: {e}")
-                continue
-    return None
+    url_api = f"https://pipedapi.kavin.rocks/search?q={query}&filter=music_songs"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url_api, timeout=5) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    items = data.get('items', [])
+                    for item in items:
+                        url_item = item.get('url', '')
+                        if '/watch?v=' in url_item:
+                            video_id = url_item.split('/watch?v=')[1]
+                            return f"https://www.youtube.com/watch?v={video_id}"
+    except Exception as e:
+        print(f"Error consultando API Piped: {e}")
+
+    # Fallback si falla la API
+    return f"https://www.youtube.com/results?search_query={query}"
 
 def reproducir_siguiente(vc, guild_id, bot):
-    """Reproduce la siguiente canción utilizando el flujo de audio extraído."""
+    """Extrae el stream directo y reproduce el audio."""
     if loop_single.get(guild_id, False) and guild_id in current and current[guild_id]:
         siguiente_track = current[guild_id]
     elif guild_id in queues and len(queues[guild_id]) > 0:
@@ -101,11 +85,18 @@ def reproducir_siguiente(vc, guild_id, bot):
         return
 
     try:
-        url_stream = siguiente_track.get('url_stream')
+        target = siguiente_track['url_or_search']
+        info = ytdl.extract_info(target, download=False)
+        if 'entries' in info and len(info['entries']) > 0:
+            info = info['entries'][0]
+
+        url_stream = info.get('url')
+        siguiente_track['title'] = info.get('title', siguiente_track['title'])
+        siguiente_track['thumbnail'] = info.get('thumbnail') or f"https://img.youtube.com/vi/{info.get('id')}/maxresdefault.jpg"
         current[guild_id] = siguiente_track
 
         if not url_stream:
-            print("No se pudo obtener la URL del streaming de audio.")
+            print("No se pudo obtener la URL del streaming.")
             reproducir_siguiente(vc, guild_id, bot)
             return
 
@@ -360,18 +351,15 @@ class Musica(commands.Cog):
         busqueda_limpia = busqueda.split("&si=")[0] if "&si=" in busqueda else busqueda
 
         try:
-            # Extraer audio directamente saltando yt-dlp usando la API de Invidious
-            cancion_nueva = await obtener_stream_invidious(busqueda_limpia)
+            url_final = await resolver_busqueda_url(busqueda_limpia)
 
-            if not cancion_nueva:
-                await interaction.followup.send("❌ No se encontraron resultados para esa búsqueda.", ephemeral=True)
-                return
-
-            titulo = cancion_nueva['title']
-            thumbnail = cancion_nueva['thumbnail']
+            cancion_nueva = {
+                'url_or_search': url_final,
+                'title': busqueda_limpia
+            }
 
         except Exception as e:
-            print(f"Error extracción audio: {e}")
+            print(f"Error procesando URL: {e}")
             await interaction.followup.send("❌ Error procesando la canción.", ephemeral=True)
             return
 
@@ -387,7 +375,7 @@ class Musica(commands.Cog):
         if not vc.is_playing() and not vc.is_paused():
             reproducir_siguiente(vc, guild_id, self.bot)
             
-            primer_track = current.get(guild_id, {'title': titulo, 'thumbnail': thumbnail})
+            primer_track = current.get(guild_id, {'title': busqueda_limpia, 'thumbnail': ''})
 
             embed = discord.Embed(
                 title="🎶 Now Playing",
@@ -404,7 +392,7 @@ class Musica(commands.Cog):
             active_message[guild_id] = msg
             return
 
-        await interaction.followup.send(f"✅ Canción agregada a la cola: **{titulo}**", ephemeral=True)
+        await interaction.followup.send(f"✅ Canción agregada a la cola.", ephemeral=True)
 
     @app_commands.command(name="queue", description="Muestra las canciones en cola")
     async def queue(self, interaction: discord.Interaction):
