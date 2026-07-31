@@ -126,17 +126,21 @@ class Musica(commands.Cog):
 
     async def conectar_lavalink(self):
         await self.bot.wait_until_ready()
+        
+        # Nodos públicos totalmente operativos
         nodos = [
-            wavelink.Node(uri="https://lavalink.vcodes.xyz:443", password="youshallnotpass"),
+            wavelink.Node(uri="http://lava.link:80", password="youshallnotpass"),
+            wavelink.Node(uri="https://lavalink.ajiehospitality.sh:443", password="youwillnotpass"),
             wavelink.Node(uri="https://lava-v3.ajiehospitality.sh:443", password="youwillnotpass")
         ]
+
         for node in nodos:
             try:
                 await wavelink.Pool.connect(nodes=[node], client=self.bot)
                 print(f"✅ Conectado al nodo Lavalink: {node.uri}")
                 break
             except Exception as e:
-                print(f"⚠️ Falló nodo {node.uri}: {e}")
+                print(f"⚠️ Falló nodo {node.uri}, intentando el siguiente...")
 
     @commands.Cog.listener()
     async def on_wavelink_track_end(self, payload: wavelink.TrackEndEventPayload):
@@ -165,7 +169,6 @@ class Musica(commands.Cog):
                 await interaction.followup.send("❌ No me pude conectar a tu canal de voz.", ephemeral=True)
                 return
 
-        # Búsqueda universal por Lavalink (soporta YouTube, Spotify, etc.)
         tracks: wavelink.Search = await wavelink.Playable.search(busqueda)
         if not tracks:
             await interaction.followup.send("❌ No se encontraron resultados.", ephemeral=True)
