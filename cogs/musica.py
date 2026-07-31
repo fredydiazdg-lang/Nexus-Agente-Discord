@@ -17,14 +17,14 @@ YTDL_OPTIONS = {
     'quiet': True,
     'default_search': 'ytsearch',
     'source_address': '0.0.0.0',
-    'socket_timeout': 15,
-    'retries': 3,
+    'socket_timeout': 30,
+    'retries': 5,
     'ignoreerrors': True,
     'nocheckcertificate': True,
     'no_warnings': True,
     'extractor_args': {
         'youtube': {
-            'player_client': ['mweb', 'android', 'web']
+            'player_client': ['ios', 'mweb', 'android']
         }
     }
 }
@@ -34,12 +34,12 @@ YTDL_SINGLE_OPTIONS = {
     'quiet': True,
     'default_search': 'ytsearch',
     'source_address': '0.0.0.0',
-    'socket_timeout': 15,
+    'socket_timeout': 30,
     'nocheckcertificate': True,
     'no_warnings': True,
     'extractor_args': {
         'youtube': {
-            'player_client': ['mweb', 'android', 'web']
+            'player_client': ['ios', 'mweb', 'android']
         }
     }
 }
@@ -358,7 +358,7 @@ class Musica(commands.Cog):
             # Limite estricto de 12 segundos para extraer la info y evitar que Discord expire
             data = await asyncio.wait_for(
                 loop.run_in_executor(None, lambda: ytdl.extract_info(search_query, download=False)),
-                timeout=12.0
+                timeout=25.0
             )
             
             canciones_a_agregar = []
