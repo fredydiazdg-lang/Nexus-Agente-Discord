@@ -342,7 +342,8 @@ class Musica(commands.Cog):
         vc = interaction.guild.voice_client
         if not vc or not vc.is_connected():
             try:
-                vc = await interaction.user.voice.channel.connect(timeout=10.0, reconnect=True, self_deaf=True)
+                # Se aumenta el timeout a 60s con reconexión activa para la voz en Docker/Render
+                vc = await interaction.user.voice.channel.connect(timeout=60.0, reconnect=True, self_deaf=True)
             except Exception as e:
                 print(f"Error conectando a voz: {e}")
                 await interaction.followup.send("❌ No me pude conectar a tu canal de voz. Revisa los permisos del bot.", ephemeral=True)
