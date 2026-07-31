@@ -9,26 +9,31 @@ import random
 
 static_ffmpeg.add_paths()
 
-# Opciones con fall-back a SoundCloud para evitar el bloqueo "Sign in to confirm you're not a bot"
+# Opciones base de extracción
 YTDL_OPTIONS = {
     'format': 'bestaudio/best',
     'noplaylist': True,
     'quiet': True,
-    'default_search': 'scsearch',  # Búsqueda instantánea en SoundCloud sin restricción de bot
     'source_address': '0.0.0.0',
-    'socket_timeout': 10,
-    'retries': 2,
+    'socket_timeout': 15,
+    'retries': 3,
     'ignoreerrors': True,
     'nocheckcertificate': True,
-    'no_warnings': True
+    'no_warnings': True,
+    'extractor_args': {
+        'youtube': {
+            'player_client': ['mweb', 'tvhtml5', 'ios']
+        }
+    }
 }
 
 if os.path.exists("cookies.txt"):
     YTDL_OPTIONS['cookiefile'] = "cookies.txt"
 
+# Búfer grande (4MB) y bitrate estable para eliminar entrecortes de red entre Render y Discord
 FFMPEG_OPTIONS = {
     'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
-    'options': '-vn -b:a 128k -bufsize 2048k'
+    'options': '-vn -b:a 128k -bufsize 4096k'
 }
 
 ytdl = yt_dlp.YoutubeDL(YTDL_OPTIONS)
@@ -41,6 +46,29 @@ volumes = {}         # Guild ID -> Nivel de volumen (0.0 a 2.0)
 loop_single = {}     # Guild ID -> Bool (Repetir canción actual automáticamente)
 
 TEXTO_FOOTER = "🎧 ¡Pídele una canción al DJ Nexus usando /play"
+
+def obtener_info_busqueda(query):
+    """Prueba buscar primero en SoundCloud; si falla, prueba en YouTube de forma fluida."""
+    if query.startswith("http"):
+        return ytdl.extract_info(query, download=False)
+    
+    # Intento 1: SoundCloud
+    try:
+        data = ytdl.extract_info(f"scsearch:{query}", download=False)
+        if data and 'entries' in data and len(data['entries']) > 0 and data['entries'][0]:
+            return data
+    except Exception as e:
+        print(f"Falló búsqueda en SoundCloud: {e}")
+
+    # Intento 2: YouTube Fallback
+    try:
+        data = ytdl.extract_info(f"ytsearch:{query}", download=False)
+        if data and 'entries' in data and len(data['entries']) > 0 and data['entries'][0]:
+            return data
+    except Exception as e:
+        print(f"Falló búsqueda en YouTube: {e}")
+
+    return None
 
 def reproducir_siguiente(vc, guild_id, bot):
     """Extrae la URL del flujo de audio directo y reproduce la siguiente canción."""
@@ -325,13 +353,13 @@ class Musica(commands.Cog):
                 return
 
         busqueda_limpia = busqueda.split("&si=")[0] if "&si=" in busqueda else busqueda
-        search_query = busqueda_limpia if busqueda_limpia.startswith("http") else f"scsearch:{busqueda_limpia}"
 
         try:
-            data = await asyncio.to_thread(ytdl.extract_info, search_query, download=False)
+            # Búsqueda híbrida (SoundCloud ➔ YouTube Fallback) en un hilo aparte
+            data = await asyncio.to_thread(obtener_info_busqueda, busqueda_limpia)
             
             if not data:
-                await interaction.followup.send("❌ No se encontraron resultados.", ephemeral=True)
+                await interaction.followup.send("❌ No se encontraron resultados para esa búsqueda.", ephemeral=True)
                 return
 
             if 'entries' in data and data['entries']:
