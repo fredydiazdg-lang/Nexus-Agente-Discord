@@ -6,10 +6,11 @@ import yt_dlp
 import asyncio
 import static_ffmpeg
 import random
+import aiohttp
 
 static_ffmpeg.add_paths()
 
-# Opciones optimizadas sin bloqueo
+# Opciones optimizadas de yt-dlp
 YTDL_OPTIONS = {
     'format': 'bestaudio/best',
     'noplaylist': True,
@@ -19,12 +20,7 @@ YTDL_OPTIONS = {
     'retries': 2,
     'ignoreerrors': True,
     'nocheckcertificate': True,
-    'no_warnings': True,
-    'extractor_args': {
-        'youtube': {
-            'player_client': ['android', 'ios', 'mweb']
-        }
-    }
+    'no_warnings': True
 }
 
 if os.path.exists("cookies.txt"):
@@ -46,26 +42,43 @@ loop_single = {}     # Guild ID -> Bool (Repetir canción actual automáticament
 
 TEXTO_FOOTER = "🎧 ¡Pídele una canción al DJ Nexus usando /play"
 
+async def buscar_en_piped_api(query):
+    """Obtiene el enlace directo de YouTube mediante la API pública de Piped (Evita el bloqueo de bot de Render)."""
+    try:
+        url_api = f"https://pipedapi.kavin.rocks/search?q={query}&filter=all"
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url_api, timeout=5) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    items = data.get('items', [])
+                    for item in items:
+                        if item.get('type') == 'video':
+                            video_id = item.get('url', '').replace('/watch?v=', '')
+                            return f"https://www.youtube.com/watch?v={video_id}"
+    except Exception as e:
+        print(f"Error Piped API: {e}")
+    return None
+
 def obtener_info_busqueda(query):
-    """Busca primero en YouTube (versión cliente móvil) y si tiene DRM/Bloqueo usa SoundCloud."""
+    """Busca primero por enlace directo o ytsearch; si falla SoundCloud, usa fallback."""
     if query.startswith("http"):
         return ytdl.extract_info(query, download=False)
 
-    # Intento 1: YouTube Search
+    # Intento 1: YouTube Search estándar
     try:
         data = ytdl.extract_info(f"ytsearch:{query}", download=False)
         if data and 'entries' in data and len(data['entries']) > 0 and data['entries'][0]:
             return data
     except Exception as e:
-        print(f"Búsqueda YouTube omitida: {e}")
+        print(f"Búsqueda directa YT falló: {e}")
 
-    # Intento 2: SoundCloud Search (si YouTube falla)
+    # Intento 2: SoundCloud Search
     try:
         data = ytdl.extract_info(f"scsearch:{query}", download=False)
         if data and 'entries' in data and len(data['entries']) > 0 and data['entries'][0]:
             return data
     except Exception as e:
-        print(f"Búsqueda SoundCloud omitida: {e}")
+        print(f"Búsqueda SoundCloud falló: {e}")
 
     return None
 
@@ -354,8 +367,15 @@ class Musica(commands.Cog):
         busqueda_limpia = busqueda.split("&si=")[0] if "&si=" in busqueda else busqueda
 
         try:
+            # 1. Intentar extracción directa
             data = await asyncio.to_thread(obtener_info_busqueda, busqueda_limpia)
             
+            # 2. Si falla por el bloqueo de Render/Soundcloud, consultar a Piped API
+            if not data and not busqueda_limpia.startswith("http"):
+                url_directa = await buscar_en_piped_api(busqueda_limpia)
+                if url_directa:
+                    data = await asyncio.to_thread(ytdl.extract_info, url_directa, download=False)
+
             if not data:
                 await interaction.followup.send("❌ No se encontraron resultados para esa búsqueda.", ephemeral=True)
                 return
