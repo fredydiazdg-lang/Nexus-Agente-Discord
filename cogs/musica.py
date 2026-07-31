@@ -9,7 +9,6 @@ import random
 
 static_ffmpeg.add_paths()
 
-
 # Opciones optimizadas de yt-dlp para Render / servidores en la nube
 YTDL_OPTIONS = {
     'format': 'bestaudio/best',
@@ -17,14 +16,14 @@ YTDL_OPTIONS = {
     'quiet': True,
     'default_search': 'ytsearch',
     'source_address': '0.0.0.0',
-    'socket_timeout': 30,
-    'retries': 5,
+    'socket_timeout': 15,
+    'retries': 3,
     'ignoreerrors': True,
     'nocheckcertificate': True,
     'no_warnings': True,
     'extractor_args': {
         'youtube': {
-            'player_client': ['ios', 'mweb', 'android']
+            'player_client': ['tvhtml5', 'ios']
         }
     }
 }
@@ -34,12 +33,12 @@ YTDL_SINGLE_OPTIONS = {
     'quiet': True,
     'default_search': 'ytsearch',
     'source_address': '0.0.0.0',
-    'socket_timeout': 30,
+    'socket_timeout': 15,
     'nocheckcertificate': True,
     'no_warnings': True,
     'extractor_args': {
         'youtube': {
-            'player_client': ['ios', 'mweb', 'android']
+            'player_client': ['tvhtml5', 'ios']
         }
     }
 }
@@ -342,8 +341,7 @@ class Musica(commands.Cog):
         vc = interaction.guild.voice_client
         if not vc or not vc.is_connected():
             try:
-                # Se aumenta el timeout a 60s con reconexión activa para la voz en Docker/Render
-                vc = await interaction.user.voice.channel.connect(timeout=60.0, reconnect=True, self_deaf=True)
+                vc = await interaction.user.voice.channel.connect(timeout=15.0, reconnect=True, self_deaf=True)
             except Exception as e:
                 print(f"Error conectando a voz: {e}")
                 await interaction.followup.send("❌ No me pude conectar a tu canal de voz. Revisa los permisos del bot.", ephemeral=True)
@@ -355,10 +353,9 @@ class Musica(commands.Cog):
             loop = asyncio.get_event_loop()
             search_query = busqueda_limpia if busqueda_limpia.startswith("http") else f"ytsearch:{busqueda_limpia}"
             
-            # Limite estricto de 12 segundos para extraer la info y evitar que Discord expire
             data = await asyncio.wait_for(
                 loop.run_in_executor(None, lambda: ytdl.extract_info(search_query, download=False)),
-                timeout=25.0
+                timeout=20.0
             )
             
             canciones_a_agregar = []
