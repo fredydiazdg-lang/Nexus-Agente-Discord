@@ -9,19 +9,27 @@ import random
 
 static_ffmpeg.add_paths()
 
-# Opciones ultrarrápidas y sin bloqueo para SoundCloud/Audio Directo
+# Opciones optimizadas usando YouTube como buscador principal
 YTDL_OPTIONS = {
     'format': 'bestaudio/best',
     'noplaylist': True,
     'quiet': True,
-    'default_search': 'scsearch',
+    'default_search': 'ytsearch',
     'source_address': '0.0.0.0',
-    'socket_timeout': 10,
-    'retries': 2,
+    'socket_timeout': 15,
+    'retries': 3,
     'ignoreerrors': True,
     'nocheckcertificate': True,
-    'no_warnings': True
+    'no_warnings': True,
+    'extractor_args': {
+        'youtube': {
+            'player_client': ['mweb', 'android', 'web']
+        }
+    }
 }
+
+if os.path.exists("cookies.txt"):
+    YTDL_OPTIONS['cookiefile'] = "cookies.txt"
 
 FFMPEG_OPTIONS = {
     'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
@@ -40,8 +48,8 @@ loop_single = {}     # Guild ID -> Bool (Repetir canción actual automáticament
 TEXTO_FOOTER = "🎧 ¡Pídele una canción al DJ Nexus usando /play"
 
 def extraer_audio_seguro(query):
-    """Extrae la pista de audio evitando bloqueos de IP de datacenter."""
-    target = query if query.startswith("http") else f"scsearch:{query}"
+    """Extrae la pista de audio desde YouTube utilizando las cookies."""
+    target = query if query.startswith("http") else f"ytsearch:{query}"
     return ytdl.extract_info(target, download=False)
 
 def reproducir_siguiente(vc, guild_id, bot):
@@ -60,11 +68,18 @@ def reproducir_siguiente(vc, guild_id, bot):
         return
 
     try:
-        url_stream = siguiente_track.get('url_stream')
+        target = siguiente_track['url_or_search']
+        info = ytdl.extract_info(target, download=False)
+        if 'entries' in info and len(info['entries']) > 0:
+            info = info['entries'][0]
+
+        url_stream = info.get('url')
+        siguiente_track['title'] = info.get('title', siguiente_track['title'])
+        siguiente_track['thumbnail'] = info.get('thumbnail') or f"https://img.youtube.com/vi/{info.get('id')}/maxresdefault.jpg"
         current[guild_id] = siguiente_track
 
         if not url_stream:
-            print("No se pudo obtener la URL del streaming de audio.")
+            print("No se pudo obtener la URL del streaming.")
             reproducir_siguiente(vc, guild_id, bot)
             return
 
@@ -319,11 +334,10 @@ class Musica(commands.Cog):
         busqueda_limpia = busqueda.split("&si=")[0] if "&si=" in busqueda else busqueda
 
         try:
-            # Petición asíncrona aislada para evitar congelar el evento de Discord
             data = await asyncio.to_thread(extraer_audio_seguro, busqueda_limpia)
 
             if not data:
-                await interaction.followup.send("❌ No se encontraron resultados para esa búsqueda.", ephemeral=True)
+                await interaction.followup.send("❌ No se encontraron resultados.", ephemeral=True)
                 return
 
             if 'entries' in data and data['entries']:
@@ -331,18 +345,12 @@ class Musica(commands.Cog):
             else:
                 entry = data
 
-            if not entry:
-                await interaction.followup.send("❌ No se pudo extraer la pista de audio.", ephemeral=True)
-                return
-
             titulo = entry.get('title', 'Canción en reproducción')
-            url_stream = entry.get('url')
             url_web = entry.get('webpage_url', busqueda_limpia)
             thumbnail = entry.get('thumbnail', '')
 
             cancion_nueva = {
                 'url_or_search': url_web,
-                'url_stream': url_stream,
                 'title': titulo,
                 'thumbnail': thumbnail
             }
