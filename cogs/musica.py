@@ -342,6 +342,10 @@ class Musica(commands.Cog):
         if not vc or not vc.is_connected():
             try:
                 vc = await interaction.user.voice.channel.connect(timeout=10.0, reconnect=True, self_deaf=True)
+            except Exception as e:
+                print(f"Error conectando a voz: {e}")
+                await interaction.followup.send("❌ No me pude conectar a tu canal de voz. Revisa los permisos del bot.", ephemeral=True)
+                return
 
         busqueda_limpia = busqueda.split("&si=")[0] if "&si=" in busqueda else busqueda
 
