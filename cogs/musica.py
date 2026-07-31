@@ -9,44 +9,22 @@ import random
 
 static_ffmpeg.add_paths()
 
-# Opciones optimizadas de yt-dlp para Render / servidores en la nube
+# Opciones con fall-back a SoundCloud para evitar el bloqueo "Sign in to confirm you're not a bot"
 YTDL_OPTIONS = {
     'format': 'bestaudio/best',
-    'noplaylist': False,
+    'noplaylist': True,
     'quiet': True,
-    'default_search': 'ytsearch',
+    'default_search': 'scsearch',  # Búsqueda instantánea en SoundCloud sin restricción de bot
     'source_address': '0.0.0.0',
-    'socket_timeout': 15,
-    'retries': 3,
+    'socket_timeout': 10,
+    'retries': 2,
     'ignoreerrors': True,
     'nocheckcertificate': True,
-    'no_warnings': True,
-    'extractor_args': {
-        'youtube': {
-            'player_client': ['tvhtml5', 'ios']
-        }
-    }
+    'no_warnings': True
 }
 
-YTDL_SINGLE_OPTIONS = {
-    'format': 'bestaudio/best',
-    'quiet': True,
-    'default_search': 'ytsearch',
-    'source_address': '0.0.0.0',
-    'socket_timeout': 15,
-    'nocheckcertificate': True,
-    'no_warnings': True,
-    'extractor_args': {
-        'youtube': {
-            'player_client': ['tvhtml5', 'ios']
-        }
-    }
-}
-
-# Si existe un archivo cookies.txt en la raíz del proyecto, yt-dlp lo usará automáticamente
 if os.path.exists("cookies.txt"):
     YTDL_OPTIONS['cookiefile'] = "cookies.txt"
-    YTDL_SINGLE_OPTIONS['cookiefile'] = "cookies.txt"
 
 FFMPEG_OPTIONS = {
     'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -probesize 32M -analyzeduration 0',
@@ -54,7 +32,6 @@ FFMPEG_OPTIONS = {
 }
 
 ytdl = yt_dlp.YoutubeDL(YTDL_OPTIONS)
-ytdl_single = yt_dlp.YoutubeDL(YTDL_SINGLE_OPTIONS)
 
 queues = {}          # Guild ID -> Lista de canciones pendientes
 history = {}         # Guild ID -> Lista de canciones ya reproducidas
@@ -66,7 +43,7 @@ loop_single = {}     # Guild ID -> Bool (Repetir canción actual automáticament
 TEXTO_FOOTER = "🎧 ¡Pídele una canción al DJ Nexus usando /play"
 
 def reproducir_siguiente(vc, guild_id, bot):
-    """Extrae la URL del flujo de audio directo de YouTube y reproduce la siguiente canción."""
+    """Extrae la URL del flujo de audio directo y reproduce la siguiente canción."""
     if loop_single.get(guild_id, False) and guild_id in current and current[guild_id]:
         siguiente_track = current[guild_id]
     elif guild_id in queues and len(queues[guild_id]) > 0:
@@ -81,19 +58,17 @@ def reproducir_siguiente(vc, guild_id, bot):
         return
 
     try:
-        target = siguiente_track['url_or_search']
-        if not target.startswith("http"):
-            target = f"https://www.youtube.com/watch?v={target}"
-
-        info_real = ytdl_single.extract_info(target, download=False)
-        if 'entries' in info_real and len(info_real['entries']) > 0:
-            info_real = info_real['entries'][0]
-
-        url_stream = info_real.get('url')
+        url_stream = siguiente_track.get('url_stream')
         
-        siguiente_track['title'] = info_real.get('title', siguiente_track['title'])
-        siguiente_track['url_web'] = info_real.get('webpage_url', target)
-        siguiente_track['thumbnail'] = info_real.get('thumbnail') or f"https://img.youtube.com/vi/{info_real.get('id')}/maxresdefault.jpg"
+        if not url_stream:
+            target = siguiente_track['url_or_search']
+            info = ytdl.extract_info(target, download=False)
+            if 'entries' in info and len(info['entries']) > 0:
+                info = info['entries'][0]
+            url_stream = info.get('url')
+            siguiente_track['title'] = info.get('title', siguiente_track['title'])
+            siguiente_track['thumbnail'] = info.get('thumbnail', '')
+
         current[guild_id] = siguiente_track
 
         if not url_stream:
@@ -115,7 +90,8 @@ def reproducir_siguiente(vc, guild_id, bot):
             embed.add_field(name="Requested By:", value=f"{vc.guild.me.mention}", inline=True)
             vol_porcentaje = int(volumes.get(guild_id, 1.0) * 100)
             embed.add_field(name="Volumen:", value=f"`{vol_porcentaje}%`", inline=True)
-            embed.set_image(url=siguiente_track['thumbnail'])
+            if siguiente_track.get('thumbnail'):
+                embed.set_image(url=siguiente_track['thumbnail'])
             embed.set_footer(text=TEXTO_FOOTER)
 
             bot.loop.create_task(active_message[guild_id].edit(embed=embed))
@@ -328,8 +304,8 @@ class Musica(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="play", description="Reproduce una canción o playlist de YouTube")
-    @app_commands.describe(busqueda="Nombre de canción o link de playlist")
+    @app_commands.command(name="play", description="Reproduce una canción o playlist")
+    @app_commands.describe(busqueda="Nombre de la canción o enlace")
     async def play(self, interaction: discord.Interaction, busqueda: str):
         if not interaction.user.voice:
             await interaction.response.send_message("❌ Conéctate a un canal de voz primero.", ephemeral=True)
@@ -339,52 +315,45 @@ class Musica(commands.Cog):
 
         guild_id = interaction.guild_id
         vc = interaction.guild.voice_client
+
         if not vc or not vc.is_connected():
             try:
-                vc = await interaction.user.voice.channel.connect(timeout=15.0, reconnect=True, self_deaf=True)
+                vc = await interaction.user.voice.channel.connect(timeout=10.0, reconnect=True, self_deaf=True)
             except Exception as e:
                 print(f"Error conectando a voz: {e}")
-                await interaction.followup.send("❌ No me pude conectar a tu canal de voz. Revisa los permisos del bot.", ephemeral=True)
+                await interaction.followup.send("❌ No me pude conectar a tu canal de voz. Revisa los permisos.", ephemeral=True)
                 return
 
         busqueda_limpia = busqueda.split("&si=")[0] if "&si=" in busqueda else busqueda
+        search_query = busqueda_limpia if busqueda_limpia.startswith("http") else f"scsearch:{busqueda_limpia}"
 
         try:
-            loop = asyncio.get_event_loop()
-            search_query = busqueda_limpia if busqueda_limpia.startswith("http") else f"ytsearch:{busqueda_limpia}"
+            data = await asyncio.to_thread(ytdl.extract_info, search_query, download=False)
             
-            data = await asyncio.wait_for(
-                loop.run_in_executor(None, lambda: ytdl.extract_info(search_query, download=False)),
-                timeout=20.0
-            )
-            
-            canciones_a_agregar = []
+            if not data:
+                await interaction.followup.send("❌ No se encontraron resultados.", ephemeral=True)
+                return
 
             if 'entries' in data and data['entries']:
-                for entry in data['entries']:
-                    if entry:
-                        titulo = entry.get('title', 'Canción de Playlist')
-                        url_video = entry.get('url') or entry.get('id')
-                        canciones_a_agregar.append({
-                            'url_or_search': url_video,
-                            'title': titulo
-                        })
-                mensaje_info = f"🗂️ Se agregaron **{len(canciones_a_agregar)} canciones** a la cola."
+                entry = data['entries'][0]
             else:
-                titulo = data.get('title', 'Canción de YouTube')
-                url_video = data.get('webpage_url') or busqueda_limpia
-                canciones_a_agregar.append({
-                    'url_or_search': url_video,
-                    'title': titulo
-                })
-                mensaje_info = f"🎶 Canción añadida a la cola."
+                entry = data
 
-        except asyncio.TimeoutError:
-            await interaction.followup.send("⚠️ YouTube tardó demasiado en responder. Intenta con un enlace directo o de nuevo.", ephemeral=True)
-            return
+            titulo = entry.get('title', 'Canción en reproducción')
+            url_stream = entry.get('url')
+            url_web = entry.get('webpage_url', busqueda_limpia)
+            thumbnail = entry.get('thumbnail', '')
+
+            cancion_nueva = {
+                'url_or_search': url_web,
+                'url_stream': url_stream,
+                'title': titulo,
+                'thumbnail': thumbnail
+            }
+
         except Exception as e:
-            await interaction.followup.send("❌ Error procesando el enlace o la búsqueda.", ephemeral=True)
-            print(f"Error yt-dlp: {e}")
+            print(f"Error extracción audio: {e}")
+            await interaction.followup.send("❌ Error procesando la canción.", ephemeral=True)
             return
 
         if guild_id not in queues:
@@ -394,18 +363,17 @@ class Musica(commands.Cog):
         if guild_id not in volumes:
             volumes[guild_id] = 1.0
 
-        queues[guild_id].extend(canciones_a_agregar)
+        queues[guild_id].append(cancion_nueva)
 
         if not vc.is_playing() and not vc.is_paused():
             reproducir_siguiente(vc, guild_id, self.bot)
             
-            primer_track = current.get(guild_id, {'title': 'Música', 'thumbnail': ''})
+            primer_track = current.get(guild_id, {'title': titulo, 'thumbnail': thumbnail})
 
             embed = discord.Embed(
                 title="🎶 Now Playing",
                 color=discord.Color.blue()
             )
-            
             embed.add_field(name="Track:", value=f"`{primer_track['title']}`", inline=True)
             embed.add_field(name="Requested By:", value=f"{interaction.user.mention}", inline=True)
             embed.add_field(name="Volumen:", value=f"`{int(volumes[guild_id] * 100)}%`", inline=True)
@@ -417,7 +385,7 @@ class Musica(commands.Cog):
             active_message[guild_id] = msg
             return
 
-        await interaction.followup.send(f"✅ {mensaje_info} (Total en cola: {len(queues[guild_id])})", ephemeral=True)
+        await interaction.followup.send(f"✅ Canción agregada a la cola: **{titulo}**", ephemeral=True)
 
     @app_commands.command(name="queue", description="Muestra las canciones en cola")
     async def queue(self, interaction: discord.Interaction):
