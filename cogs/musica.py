@@ -6,29 +6,22 @@ import yt_dlp
 import asyncio
 import static_ffmpeg
 import random
-import aiohttp
 
 static_ffmpeg.add_paths()
 
+# Opciones ultrarrápidas y sin bloqueo para SoundCloud/Audio Directo
 YTDL_OPTIONS = {
     'format': 'bestaudio/best',
     'noplaylist': True,
     'quiet': True,
+    'default_search': 'scsearch',
     'source_address': '0.0.0.0',
-    'socket_timeout': 15,
-    'retries': 3,
+    'socket_timeout': 10,
+    'retries': 2,
     'ignoreerrors': True,
     'nocheckcertificate': True,
-    'no_warnings': True,
-    'extractor_args': {
-        'youtube': {
-            'player_client': ['android', 'ios']
-        }
-    }
+    'no_warnings': True
 }
-
-if os.path.exists("cookies.txt"):
-    YTDL_OPTIONS['cookiefile'] = "cookies.txt"
 
 FFMPEG_OPTIONS = {
     'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
@@ -46,31 +39,13 @@ loop_single = {}     # Guild ID -> Bool (Repetir canción actual automáticament
 
 TEXTO_FOOTER = "🎧 ¡Pídele una canción al DJ Nexus usando /play"
 
-async def resolver_busqueda_url(query):
-    """Si es un link lo usa directo; si es texto, busca la URL real en la API pública de Piped."""
-    if query.startswith("http://") or query.startswith("https://"):
-        return query
-
-    url_api = f"https://pipedapi.kavin.rocks/search?q={query}&filter=music_songs"
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url_api, timeout=5) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    items = data.get('items', [])
-                    for item in items:
-                        url_item = item.get('url', '')
-                        if '/watch?v=' in url_item:
-                            video_id = url_item.split('/watch?v=')[1]
-                            return f"https://www.youtube.com/watch?v={video_id}"
-    except Exception as e:
-        print(f"Error consultando API Piped: {e}")
-
-    # Fallback si falla la API
-    return f"https://www.youtube.com/results?search_query={query}"
+def extraer_audio_seguro(query):
+    """Extrae la pista de audio evitando bloqueos de IP de datacenter."""
+    target = query if query.startswith("http") else f"scsearch:{query}"
+    return ytdl.extract_info(target, download=False)
 
 def reproducir_siguiente(vc, guild_id, bot):
-    """Extrae el stream directo y reproduce el audio."""
+    """Reproduce la siguiente canción disponible en la cola."""
     if loop_single.get(guild_id, False) and guild_id in current and current[guild_id]:
         siguiente_track = current[guild_id]
     elif guild_id in queues and len(queues[guild_id]) > 0:
@@ -85,18 +60,11 @@ def reproducir_siguiente(vc, guild_id, bot):
         return
 
     try:
-        target = siguiente_track['url_or_search']
-        info = ytdl.extract_info(target, download=False)
-        if 'entries' in info and len(info['entries']) > 0:
-            info = info['entries'][0]
-
-        url_stream = info.get('url')
-        siguiente_track['title'] = info.get('title', siguiente_track['title'])
-        siguiente_track['thumbnail'] = info.get('thumbnail') or f"https://img.youtube.com/vi/{info.get('id')}/maxresdefault.jpg"
+        url_stream = siguiente_track.get('url_stream')
         current[guild_id] = siguiente_track
 
         if not url_stream:
-            print("No se pudo obtener la URL del streaming.")
+            print("No se pudo obtener la URL del streaming de audio.")
             reproducir_siguiente(vc, guild_id, bot)
             return
 
@@ -351,15 +319,36 @@ class Musica(commands.Cog):
         busqueda_limpia = busqueda.split("&si=")[0] if "&si=" in busqueda else busqueda
 
         try:
-            url_final = await resolver_busqueda_url(busqueda_limpia)
+            # Petición asíncrona aislada para evitar congelar el evento de Discord
+            data = await asyncio.to_thread(extraer_audio_seguro, busqueda_limpia)
+
+            if not data:
+                await interaction.followup.send("❌ No se encontraron resultados para esa búsqueda.", ephemeral=True)
+                return
+
+            if 'entries' in data and data['entries']:
+                entry = data['entries'][0]
+            else:
+                entry = data
+
+            if not entry:
+                await interaction.followup.send("❌ No se pudo extraer la pista de audio.", ephemeral=True)
+                return
+
+            titulo = entry.get('title', 'Canción en reproducción')
+            url_stream = entry.get('url')
+            url_web = entry.get('webpage_url', busqueda_limpia)
+            thumbnail = entry.get('thumbnail', '')
 
             cancion_nueva = {
-                'url_or_search': url_final,
-                'title': busqueda_limpia
+                'url_or_search': url_web,
+                'url_stream': url_stream,
+                'title': titulo,
+                'thumbnail': thumbnail
             }
 
         except Exception as e:
-            print(f"Error procesando URL: {e}")
+            print(f"Error extracción audio: {e}")
             await interaction.followup.send("❌ Error procesando la canción.", ephemeral=True)
             return
 
@@ -375,7 +364,7 @@ class Musica(commands.Cog):
         if not vc.is_playing() and not vc.is_paused():
             reproducir_siguiente(vc, guild_id, self.bot)
             
-            primer_track = current.get(guild_id, {'title': busqueda_limpia, 'thumbnail': ''})
+            primer_track = current.get(guild_id, {'title': titulo, 'thumbnail': thumbnail})
 
             embed = discord.Embed(
                 title="🎶 Now Playing",
@@ -392,7 +381,7 @@ class Musica(commands.Cog):
             active_message[guild_id] = msg
             return
 
-        await interaction.followup.send(f"✅ Canción agregada a la cola.", ephemeral=True)
+        await interaction.followup.send(f"✅ Canción agregada a la cola: **{titulo}**", ephemeral=True)
 
     @app_commands.command(name="queue", description="Muestra las canciones en cola")
     async def queue(self, interaction: discord.Interaction):
