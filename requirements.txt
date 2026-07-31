@@ -1,7 +1,7 @@
-discord.py
+discord.py[voice]
 python-dotenv
 groq
 yt-dlp
 static-ffmpeg
 aiohttp
-pynacl
+PyNaCl>=1.5.0
