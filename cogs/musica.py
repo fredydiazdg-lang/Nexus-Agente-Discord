@@ -10,7 +10,6 @@ import aiohttp
 
 static_ffmpeg.add_paths()
 
-# Opciones optimizadas de yt-dlp para Render
 YTDL_OPTIONS = {
     'format': 'bestaudio/best',
     'noplaylist': True,
@@ -20,12 +19,7 @@ YTDL_OPTIONS = {
     'retries': 2,
     'ignoreerrors': True,
     'nocheckcertificate': True,
-    'no_warnings': True,
-    'extractor_args': {
-        'youtube': {
-            'player_client': ['mweb', 'android']
-        }
-    }
+    'no_warnings': True
 }
 
 if os.path.exists("cookies.txt"):
@@ -47,45 +41,52 @@ loop_single = {}     # Guild ID -> Bool (Repetir canción actual automáticament
 
 TEXTO_FOOTER = "🎧 ¡Pídele una canción al DJ Nexus usando /play"
 
-async def buscar_video_api(query):
-    """Busca en la API pública de Piped/Invidious para saltarse el bloqueo de IP de Render."""
-    apis = [
-        f"https://pipedapi.kavin.rocks/search?q={query}&filter=videos",
-        f"https://api.invidious.io/api/v1/search?q={query}&type=video"
-    ]
-    
-    async with aiohttp.ClientSession() as session:
-        for api_url in apis:
-            try:
-                async with session.get(api_url, timeout=4) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        items = data.get('items', []) if 'items' in data else data
-                        for item in items:
-                            v_id = item.get('url', '').replace('/watch?v=', '') or item.get('videoId')
-                            if v_id:
-                                return f"https://www.youtube.com/watch?v={v_id}"
-            except Exception as e:
-                print(f"Error consultando API alternativa: {e}")
-    return None
+INSTANCIAS_INVIDIOUS = [
+    "https://vid.puffyan.us",
+    "https://invidious.nerdvpn.de",
+    "https://inv.us.projectsegfau.lt",
+    "https://invidious.epicsite.xyz"
+]
 
-def obtener_info_busqueda(query):
-    """Intenta extracción directa si es un enlace de YouTube o SoundCloud."""
-    if query.startswith("http"):
-        return ytdl.extract_info(query, download=False)
-    
-    # Intento con ytsearch estándar por si Render lo deja pasar
-    try:
-        data = ytdl.extract_info(f"ytsearch:{query}", download=False)
-        if data and 'entries' in data and len(data['entries']) > 0 and data['entries'][0]:
-            return data
-    except Exception as e:
-        print(f"Búsqueda directa falló: {e}")
-        
+async def obtener_stream_invidious(query):
+    """Busca en instancias públicas de Invidious para evitar totalmente el bloqueo anti-bot de Render."""
+    async with aiohttp.ClientSession() as session:
+        for instancia in INSTANCIAS_INVIDIOUS:
+            try:
+                url_busqueda = f"{instancia}/api/v1/search?q={query}&type=video"
+                async with session.get(url_busqueda, timeout=4) as resp:
+                    if resp.status == 200:
+                        resultados = await resp.json()
+                        if resultados and len(resultados) > 0:
+                            video_id = resultados[0].get('videoId')
+                            titulo = resultados[0].get('title', 'Música')
+                            thumbs = resultados[0].get('videoThumbnails', [])
+                            thumb_url = thumbs[0].get('url') if thumbs else ''
+                            
+                            # Obtener streaming directo
+                            url_info = f"{instancia}/api/v1/videos/{video_id}"
+                            async with session.get(url_info, timeout=4) as resp_info:
+                                if resp_info.status == 200:
+                                    info_video = await resp_info.json()
+                                    formatos = info_video.get('adaptiveFormats', [])
+                                    # Filtrar solo stream de audio
+                                    audio_formats = [f for f in formatos if 'audio' in f.get('type', '')]
+                                    if audio_formats:
+                                        # Tomar la mejor calidad de audio disponible
+                                        audio_stream_url = audio_formats[0].get('url')
+                                        return {
+                                            'url_or_search': f"https://www.youtube.com/watch?v={video_id}",
+                                            'url_stream': audio_stream_url,
+                                            'title': titulo,
+                                            'thumbnail': thumb_url
+                                        }
+            except Exception as e:
+                print(f"Instancia {instancia} falló: {e}")
+                continue
     return None
 
 def reproducir_siguiente(vc, guild_id, bot):
-    """Extrae la URL del flujo de audio directo y reproduce la siguiente canción."""
+    """Reproduce la siguiente canción utilizando el flujo de audio extraído."""
     if loop_single.get(guild_id, False) and guild_id in current and current[guild_id]:
         siguiente_track = current[guild_id]
     elif guild_id in queues and len(queues[guild_id]) > 0:
@@ -101,16 +102,6 @@ def reproducir_siguiente(vc, guild_id, bot):
 
     try:
         url_stream = siguiente_track.get('url_stream')
-        
-        if not url_stream:
-            target = siguiente_track['url_or_search']
-            info = ytdl.extract_info(target, download=False)
-            if 'entries' in info and len(info['entries']) > 0:
-                info = info['entries'][0]
-            url_stream = info.get('url')
-            siguiente_track['title'] = info.get('title', siguiente_track['title'])
-            siguiente_track['thumbnail'] = info.get('thumbnail', '')
-
         current[guild_id] = siguiente_track
 
         if not url_stream:
@@ -369,35 +360,15 @@ class Musica(commands.Cog):
         busqueda_limpia = busqueda.split("&si=")[0] if "&si=" in busqueda else busqueda
 
         try:
-            # 1. Intentar la extracción directa con yt-dlp
-            data = await asyncio.to_thread(obtener_info_busqueda, busqueda_limpia)
-            
-            # 2. Si falla por el bloqueo anti-bot de Render, buscar la URL real con la API externa
-            if not data and not busqueda_limpia.startswith("http"):
-                url_directa = await buscar_video_api(busqueda_limpia)
-                if url_directa:
-                    data = await asyncio.to_thread(ytdl.extract_info, url_directa, download=False)
+            # Extraer audio directamente saltando yt-dlp usando la API de Invidious
+            cancion_nueva = await obtener_stream_invidious(busqueda_limpia)
 
-            if not data:
+            if not cancion_nueva:
                 await interaction.followup.send("❌ No se encontraron resultados para esa búsqueda.", ephemeral=True)
                 return
 
-            if 'entries' in data and data['entries']:
-                entry = data['entries'][0]
-            else:
-                entry = data
-
-            titulo = entry.get('title', 'Canción en reproducción')
-            url_stream = entry.get('url')
-            url_web = entry.get('webpage_url', busqueda_limpia)
-            thumbnail = entry.get('thumbnail', '')
-
-            cancion_nueva = {
-                'url_or_search': url_web,
-                'url_stream': url_stream,
-                'title': titulo,
-                'thumbnail': thumbnail
-            }
+            titulo = cancion_nueva['title']
+            thumbnail = cancion_nueva['thumbnail']
 
         except Exception as e:
             print(f"Error extracción audio: {e}")
