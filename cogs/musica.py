@@ -1,3 +1,4 @@
+import os
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -8,6 +9,7 @@ import random
 
 static_ffmpeg.add_paths()
 
+# Opciones optimizadas de yt-dlp para Render / servidores en la nube
 YTDL_OPTIONS = {
     'format': 'bestaudio/best',
     'noplaylist': False,
@@ -19,7 +21,12 @@ YTDL_OPTIONS = {
     'extract_flat': 'in_playlist',
     'ignoreerrors': True,
     'nocheckcertificate': True,
-    'no_warnings': True
+    'no_warnings': True,
+    'extractor_args': {
+        'youtube': {
+            'player_client': ['android', 'web']
+        }
+    }
 }
 
 YTDL_SINGLE_OPTIONS = {
@@ -28,8 +35,18 @@ YTDL_SINGLE_OPTIONS = {
     'default_search': 'ytsearch',
     'source_address': '0.0.0.0',
     'nocheckcertificate': True,
-    'no_warnings': True
+    'no_warnings': True,
+    'extractor_args': {
+        'youtube': {
+            'player_client': ['android', 'web']
+        }
+    }
 }
+
+# Si existe un archivo cookies.txt en la raíz del proyecto, yt-dlp lo usará automáticamente
+if os.path.exists("cookies.txt"):
+    YTDL_OPTIONS['cookiefile'] = "cookies.txt"
+    YTDL_SINGLE_OPTIONS['cookiefile'] = "cookies.txt"
 
 FFMPEG_OPTIONS = {
     'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -probesize 32M -analyzeduration 0',
