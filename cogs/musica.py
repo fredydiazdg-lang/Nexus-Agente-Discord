@@ -9,9 +9,9 @@ import random
 
 static_ffmpeg.add_paths()
 
-# Opciones optimizadas usando YouTube como buscador principal
+# Opciones a prueba de fallos: Acepta cualquier formato de audio/vídeo y usa las cookies
 YTDL_OPTIONS = {
-    'format': 'bestaudio/best',
+    'format': 'bestaudio/best/bestvideo+bestaudio/worst',
     'noplaylist': True,
     'quiet': True,
     'default_search': 'ytsearch',
@@ -48,7 +48,7 @@ loop_single = {}     # Guild ID -> Bool (Repetir canción actual automáticament
 TEXTO_FOOTER = "🎧 ¡Pídele una canción al DJ Nexus usando /play"
 
 def extraer_audio_seguro(query):
-    """Extrae la pista de audio desde YouTube utilizando las cookies."""
+    """Extrae la información usando YouTube y las cookies del repositorio."""
     target = query if query.startswith("http") else f"ytsearch:{query}"
     return ytdl.extract_info(target, download=False)
 
