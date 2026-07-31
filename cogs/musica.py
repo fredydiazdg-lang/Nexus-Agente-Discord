@@ -340,14 +340,23 @@ class Musica(commands.Cog):
         guild_id = interaction.guild_id
         vc = interaction.guild.voice_client
         if not vc:
-            vc = await interaction.user.voice.channel.connect()
+            try:
+                vc = await interaction.user.voice.channel.connect()
+            except Exception as e:
+                await interaction.followup.send("❌ No me pude conectar a tu canal de voz.", ephemeral=True)
+                return
 
         busqueda_limpia = busqueda.split("&si=")[0] if "&si=" in busqueda else busqueda
 
         try:
             loop = asyncio.get_event_loop()
             search_query = busqueda_limpia if busqueda_limpia.startswith("http") else f"ytsearch:{busqueda_limpia}"
-            data = await loop.run_in_executor(None, lambda: ytdl.extract_info(search_query, download=False))
+            
+            # Limite estricto de 12 segundos para extraer la info y evitar que Discord expire
+            data = await asyncio.wait_for(
+                loop.run_in_executor(None, lambda: ytdl.extract_info(search_query, download=False)),
+                timeout=12.0
+            )
             
             canciones_a_agregar = []
 
@@ -370,6 +379,9 @@ class Musica(commands.Cog):
                 })
                 mensaje_info = f"🎶 Canción añadida a la cola."
 
+        except asyncio.TimeoutError:
+            await interaction.followup.send("⚠️ YouTube tardó demasiado en responder. Intenta con un enlace directo o de nuevo.", ephemeral=True)
+            return
         except Exception as e:
             await interaction.followup.send("❌ Error procesando el enlace o la búsqueda.", ephemeral=True)
             print(f"Error yt-dlp: {e}")
