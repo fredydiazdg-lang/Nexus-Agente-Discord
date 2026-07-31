@@ -27,8 +27,8 @@ if os.path.exists("cookies.txt"):
     YTDL_OPTIONS['cookiefile'] = "cookies.txt"
 
 FFMPEG_OPTIONS = {
-    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -probesize 32M -analyzeduration 0',
-    'options': '-vn -b:a 192k -bufsize 1024k -ar 48000 -ac 2'
+    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
+    'options': '-vn -b:a 128k -bufsize 2048k'
 }
 
 ytdl = yt_dlp.YoutubeDL(YTDL_OPTIONS)
